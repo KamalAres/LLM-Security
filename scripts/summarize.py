@@ -22,15 +22,25 @@ def extract_video_id(url):
 
 def fetch_transcript(video_id):
     try:
-        segs = YouTubeTranscriptApi.get_transcript(video_id)
-    except Exception:
-        try:
-            tl = YouTubeTranscriptApi.list_transcripts(video_id)
-            segs = tl.find_generated_transcript(["en"]).fetch()
-        except Exception as e:
-            raise RuntimeError(f"Transcript unavailable: {e}")
-    return " ".join(s["text"] for s in segs), segs
+        api = YouTubeTranscriptApi()
 
+        try:
+            # Try direct fetch (new API)
+            transcript = api.fetch(video_id)
+            segs = [{"text": t.text, "start": t.start} for t in transcript]
+
+        except Exception:
+            # Fallback: manually select transcript (handles edge cases)
+            tl = api.list(video_id)
+            t = tl.find_transcript(["en"]) or tl.find_generated_transcript(["en"])
+            fetched = t.fetch()
+            segs = [{"text": x.text, "start": x.start} for x in fetched]
+
+    except Exception as e:
+        raise RuntimeError(f"Transcript unavailable: {e}")
+
+    return " ".join(s["text"] for s in segs), segs
+    
 def fetch_metadata(video_id):
     try:
         r = requests.get(
