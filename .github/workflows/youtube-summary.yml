@@ -67,7 +67,7 @@ jobs:
       - name: Generate summary
         id: summarize
         env:
-          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          GROQ_API_KEY: ${{ secrets.GROQ_API_KEY }}
           YOUTUBE_URL: ${{ steps.resolve.outputs.url }}
           TAGS: ${{ steps.resolve.outputs.tags }}
         run: |
