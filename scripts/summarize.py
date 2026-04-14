@@ -21,19 +21,18 @@ def extract_video_id(url):
     raise ValueError(f"Cannot extract video ID from: {url}")
 
 def fetch_transcript(video_id):
-    # --- First try youtube-transcript-api ---
+    # ── Method 1: youtube-transcript-api ──
     try:
         api = YouTubeTranscriptApi()
         transcript = api.fetch(video_id)
         segs = [{"text": t.text, "start": t.start} for t in transcript]
         return " ".join(s["text"] for s in segs), segs
-
     except Exception as e:
         print(f"⚠️ Primary transcript fetch failed: {e}")
 
-    # --- Fallback: yt-dlp ---
+    # ── Method 2: yt-dlp ──
     try:
-        import subprocess, json, tempfile
+        import subprocess, json
 
         print("🔄 Falling back to yt-dlp...")
 
@@ -51,30 +50,38 @@ def fetch_transcript(video_id):
 
         result = subprocess.run(cmd, capture_output=True, text=True)
 
-        if result.returncode != 0:
-            raise RuntimeError(result.stderr)
+        if result.returncode == 0:
+            data = json.loads(result.stdout)
+            subs = data.get("automatic_captions", {}).get("en", [])
 
-        data = json.loads(result.stdout)
-
-        subtitles = data.get("automatic_captions", {}).get("en", [])
-        if not subtitles:
-            raise RuntimeError("No subtitles found via yt-dlp")
-
-        # Fetch subtitle file
-        import requests
-        sub_url = subtitles[0]["url"]
-        xml = requests.get(sub_url).text
-
-        # Extract text (basic XML parsing)
-        import re
-        texts = re.findall(r'>([^<]+)<', xml)
-
-        segs = [{"text": t, "start": 0} for t in texts]
-
-        return " ".join(texts), segs
+            if subs:
+                import requests, re
+                xml = requests.get(subs[0]["url"]).text
+                texts = re.findall(r'>([^<]+)<', xml)
+                segs = [{"text": t, "start": 0} for t in texts]
+                return " ".join(texts), segs
 
     except Exception as e:
-        raise RuntimeError(f"All transcript methods failed: {e}")
+        print(f"⚠️ yt-dlp failed: {e}")
+
+    # ── Method 3: External API (🔥 RELIABLE FIX) ──
+    try:
+        print("🌐 Falling back to external transcript API...")
+
+        import requests
+        url = f"https://youtubetranscript.com/?server_vid2={video_id}"
+        res = requests.get(url, timeout=15)
+
+        if res.status_code == 200:
+            data = res.json()
+            segs = [{"text": x["text"], "start": x.get("start", 0)} for x in data]
+            return " ".join(s["text"] for s in segs), segs
+
+    except Exception as e:
+        print(f"⚠️ External API failed: {e}")
+
+    # ── Final fail ──
+    raise RuntimeError("❌ All transcript methods failed (YouTube blocked + no fallback worked)")
     
 def fetch_metadata(video_id):
     try:
