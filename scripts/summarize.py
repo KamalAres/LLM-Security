@@ -43,6 +43,9 @@ def fetch_transcript(video_id):
             "--sub-lang", "en",
             "--skip-download",
             "--print-json",
+            "--no-playlist",
+            "--extractor-args", "youtube:player_client=android",
+            "--js-runtimes", "node",
             f"https://www.youtube.com/watch?v={video_id}"
         ]
 
