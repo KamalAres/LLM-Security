@@ -1,7 +1,6 @@
 name: 📺 YouTube Video Summarizer
 
 on:
-  # Trigger manually from GitHub UI with a YouTube URL
   workflow_dispatch:
     inputs:
       youtube_url:
@@ -13,7 +12,6 @@ on:
         required: false
         type: string
 
-  # Trigger via GitHub Issue with label 'summarize'
   issues:
     types: [labeled]
 
@@ -28,7 +26,7 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      # ── Resolve URL depending on trigger ──────────────────────────────────
+      # ── Resolve URL ───────────────────────────────────────────────────────
       - name: Resolve YouTube URL
         id: resolve
         run: |
@@ -37,7 +35,6 @@ jobs:
             echo "tags=${{ github.event.inputs.tags }}" >> $GITHUB_OUTPUT
             echo "issue_number=" >> $GITHUB_OUTPUT
           else
-            # Parse URL from issue body (first line that starts with http)
             ISSUE_BODY="${{ github.event.issue.body }}"
             URL=$(echo "$ISSUE_BODY" | grep -oP 'https?://[^\s]+youtube[^\s]+|https?://youtu\.be/[^\s]+' | head -1)
             TAGS=$(echo "$ISSUE_BODY" | grep -i '^tags:' | sed 's/^[Tt]ags://;s/ //g')
@@ -46,7 +43,6 @@ jobs:
             echo "issue_number=${{ github.event.issue.number }}" >> $GITHUB_OUTPUT
           fi
 
-      # ── Only run on 'summarize' label for issue trigger ───────────────────
       - name: Check label (issue trigger only)
         if: github.event_name == 'issues' && github.event.label.name != 'summarize'
         run: |
@@ -59,9 +55,18 @@ jobs:
         with:
           python-version: "3.11"
 
+      # ✅ FIX: Install yt-dlp + stable deps
       - name: Install dependencies
         run: |
-          pip install youtube-transcript-api anthropic pytube requests
+          python -m pip install --upgrade pip
+          pip install --no-cache-dir youtube-transcript-api requests yt-dlp
+
+      # 🔍 Optional debug (VERY useful)
+      - name: Debug versions
+        run: |
+          python --version
+          pip show youtube-transcript-api
+          yt-dlp --version
 
       # ── Run summarizer ────────────────────────────────────────────────────
       - name: Generate summary
@@ -74,7 +79,7 @@ jobs:
           python scripts/summarize.py
           echo "output_file=$(cat /tmp/output_file.txt)" >> $GITHUB_OUTPUT
 
-      # ── Commit note to repo ───────────────────────────────────────────────
+      # ── Commit note ───────────────────────────────────────────────────────
       - name: Commit summary to notes/
         run: |
           git config user.name  "github-actions[bot]"
@@ -83,7 +88,7 @@ jobs:
           git diff --cached --quiet || git commit -m "📝 Add summary: $(cat /tmp/video_title.txt)"
           git push
 
-      # ── Comment on issue (if triggered from issue) ────────────────────────
+      # ── Comment on issue ──────────────────────────────────────────────────
       - name: Comment on issue
         if: steps.resolve.outputs.issue_number != ''
         uses: actions/github-script@v7
