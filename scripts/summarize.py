@@ -21,25 +21,57 @@ def extract_video_id(url):
     raise ValueError(f"Cannot extract video ID from: {url}")
 
 def fetch_transcript(video_id):
+    # --- First try youtube-transcript-api ---
     try:
         api = YouTubeTranscriptApi()
-
-        try:
-            # Try direct fetch (new API)
-            transcript = api.fetch(video_id)
-            segs = [{"text": t.text, "start": t.start} for t in transcript]
-
-        except Exception:
-            # Fallback: manually select transcript (handles edge cases)
-            tl = api.list(video_id)
-            t = tl.find_transcript(["en"]) or tl.find_generated_transcript(["en"])
-            fetched = t.fetch()
-            segs = [{"text": x.text, "start": x.start} for x in fetched]
+        transcript = api.fetch(video_id)
+        segs = [{"text": t.text, "start": t.start} for t in transcript]
+        return " ".join(s["text"] for s in segs), segs
 
     except Exception as e:
-        raise RuntimeError(f"Transcript unavailable: {e}")
+        print(f"⚠️ Primary transcript fetch failed: {e}")
 
-    return " ".join(s["text"] for s in segs), segs
+    # --- Fallback: yt-dlp ---
+    try:
+        import subprocess, json, tempfile
+
+        print("🔄 Falling back to yt-dlp...")
+
+        cmd = [
+            "yt-dlp",
+            "--write-auto-sub",
+            "--sub-lang", "en",
+            "--skip-download",
+            "--print-json",
+            f"https://www.youtube.com/watch?v={video_id}"
+        ]
+
+        result = subprocess.run(cmd, capture_output=True, text=True)
+
+        if result.returncode != 0:
+            raise RuntimeError(result.stderr)
+
+        data = json.loads(result.stdout)
+
+        subtitles = data.get("automatic_captions", {}).get("en", [])
+        if not subtitles:
+            raise RuntimeError("No subtitles found via yt-dlp")
+
+        # Fetch subtitle file
+        import requests
+        sub_url = subtitles[0]["url"]
+        xml = requests.get(sub_url).text
+
+        # Extract text (basic XML parsing)
+        import re
+        texts = re.findall(r'>([^<]+)<', xml)
+
+        segs = [{"text": t, "start": 0} for t in texts]
+
+        return " ".join(texts), segs
+
+    except Exception as e:
+        raise RuntimeError(f"All transcript methods failed: {e}")
     
 def fetch_metadata(video_id):
     try:
